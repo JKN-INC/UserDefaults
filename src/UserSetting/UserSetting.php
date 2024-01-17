@@ -480,16 +480,14 @@ class UserSetting extends ActiveRecord {
 	 * @return bool
 	 */
 	protected function isValid() {
-		$do_assignements = true;
-
-		foreach ($this->getUdfCheckObjects() as $udf) {
-			if (!$udf->isValid($this->getUsrObject())) {
-				$do_assignements = false;
-			}
-		}
-
-		return $do_assignements;
-	}
+        $do_assignements = false;
+        foreach ($this->getUdfCheckObjects() as $udf) {
+            if ($udf->isValid($this->getUsrObject())) {
+                $do_assignements = true;
+            }
+        }
+        return $do_assignements;
+    }
 
 
 	/**
