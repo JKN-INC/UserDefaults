@@ -51,7 +51,7 @@ class UDFCheckGUI {
         $this->pl = ilUserDefaultsPlugin::getInstance();
         $this->ctrl->saveParameter($this, self::IDENTIFIER_CATEGORY);
         $this->ctrl->saveParameter($this, self::IDENTIFIER);
-        $this->ctrl->setParameter($this, UserSettingsGUI::IDENTIFIER, $_GET[UserSettingsGUI::IDENTIFIER]);
+        $this->ctrl->setParameter($this, UserSettingsGUI::IDENTIFIER, $_GET[UserSettingsGUI::IDENTIFIER] ?? null);
         $this->ctrl->saveParameter($parent_gui, UserSettingsGUI::IDENTIFIER);
 	}
 
