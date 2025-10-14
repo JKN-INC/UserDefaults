@@ -12,7 +12,7 @@ set_portfolio_template_id#:#Portfolio-Template
 set_portfolio_assigned_to_groups#:#Share Portfolio to
 set_table_title#:#Settings
 set_status#:#Active
-set_cancel#:#Abbrechen
+set_cancel#:#Cancel
 set_blog_name#:#Blog-Name
 set_portfolio_name#:#Portfolio-Name
 set_actions#:#Actions
