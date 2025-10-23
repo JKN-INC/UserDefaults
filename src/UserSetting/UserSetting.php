@@ -21,17 +21,15 @@ use ilObjPortfolioTemplate;
 use ilObjStudyProgramme;
 use ilObjUser;
 use ilOrgUnitUserAssignment;
+use ilParticipants;
 use ilPersonalSkill;
 use ilPortfolioAccessHandler;
 use ilPortfolioTemplatePage;
 use ilUserDefaultsPlugin;
 use ilUtil;
 use php4DOMDocument;
-use srag\DIC\UserDefaults\DICTrait;
-use srag\Plugins\UserDefaults\Access\Courses;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheck;
 use srag\Plugins\UserDefaults\Utils\UserDefaultsTrait;
-use srag\ActiveRecordConfig\UserDefaults\Config\Config;
 use ilRbacReview;
 
 /**
@@ -44,7 +42,6 @@ use ilRbacReview;
  */
 class UserSetting extends ActiveRecord {
 
-	use DICTrait;
 	use UserDefaultsTrait;
 	const TABLE_NAME = 'usr_def_sets';
 	const PLUGIN_CLASS_NAME = ilUserDefaultsPlugin::class;
@@ -53,20 +50,28 @@ class UserSetting extends ActiveRecord {
 	const P_USER_FIRSTNAME = 'FIRSTNAME';
 	const P_USER_LASTNAME = 'LASTNAME';
 	const P_USER_EMAIL = 'EMAIL';
-	/**
-	 * @var array
-	 */
-	protected static $placeholders = array(
+	protected static array $placeholders = array(
 		self::P_USER_FIRSTNAME,
 		self::P_USER_LASTNAME,
 		self::P_USER_EMAIL,
 	);
+    private ilUserDefaultsPlugin $pl;
+    private \ILIAS\DI\RBACServices $rbac;
+    private ilObjUser $user;
+
+    public function __construct($primary_key = 0) {
+        global $DIC;
+        $this->pl = ilUserDefaultsPlugin::getInstance();
+        $this->rbac = $DIC->rbac();
+        $this->user = $DIC->user();
+
+        parent::__construct($primary_key);
+    }
 
     /**
-     * @throws \arException
      * @deprecated
      */
-    public static function returnDbTableName()
+    public static function returnDbTableName(): string
     {
         return self::TABLE_NAME;
     }
@@ -75,40 +80,24 @@ class UserSetting extends ActiveRecord {
         return self::TABLE_NAME;
     }
 
-    /**
-	 * @return string
-	 */
-	public function getConnectorContainerName() {
+	public function getConnectorContainerName(): string
+    {
 		return self::TABLE_NAME;
 	}
 
 
-	/**
-	 * @param $key
-	 *
-	 * @return string
-	 */
-	protected function getPlaceholder($key) {
-		switch ($key) {
-			case self::P_USER_FIRSTNAME:
-				return $this->getUsrObject()->getFirstname();
-				break;
-			case self::P_USER_LASTNAME:
-				return $this->getUsrObject()->getLastname();
-				break;
-			case self::P_USER_EMAIL:
-				return $this->getUsrObject()->getEmail();
-				break;
-		}
+	protected function getPlaceholder(string $key): string
+    {
+        return match ($key) {
+            self::P_USER_FIRSTNAME => $this->getUsrObject()->getFirstname(),
+            self::P_USER_LASTNAME => $this->getUsrObject()->getLastname(),
+            self::P_USER_EMAIL => $this->getUsrObject()->getEmail(),
+            default => '',
+        };
+    }
 
-		return '';
-	}
-
-
-	/**
-	 * @return string
-	 */
-	public static function getAvailablePlaceholdersAsString() {
+	public static function getAvailablePlaceholdersAsString(): string
+    {
 		$return = ilUserDefaultsPlugin::getInstance()->txt('set_placeholders');
 		$return .= ' [';
 		$return .= implode('] [', self::$placeholders);
@@ -117,11 +106,7 @@ class UserSetting extends ActiveRecord {
 		return $return;
 	}
 
-
-	/**
-	 * @return mixed|string
-	 */
-	public function getReplacesPortfolioTitle() {
+	public function getReplacesPortfolioTitle(): string {
 		$text = $this->getPortfolioName();
 
 		foreach (self::$placeholders as $p) {
@@ -131,11 +116,7 @@ class UserSetting extends ActiveRecord {
 		return $text;
 	}
 
-
-	/**
-	 * @var ilObjUser
-	 */
-	protected $usr_object;
+	protected ilObjUser $usr_object;
 
 
 	/**
@@ -144,15 +125,13 @@ class UserSetting extends ActiveRecord {
 	 *
 	 * @return UserSetting
 	 */
-	public static function find($primary_key, array $add_constructor_args = array()) {
+	public static function find($primary_key, array $add_constructor_args = array()): ?ActiveRecord
+    {
 		return parent::find($primary_key, $add_constructor_args);
 	}
 
-
-	/**
-	 *
-	 */
-	public function delete() {
+	public function delete(): void
+    {
 		foreach ($this->getUdfCheckObjects() as $udf_check) {
 			$udf_check->delete();
 		}
@@ -160,27 +139,22 @@ class UserSetting extends ActiveRecord {
 		parent::delete();
 	}
 
-
-	/**
-	 *
-	 */
-	public function update() {
-		$this->setOwner(self::dic()->user()->getId());
+	public function update(): void
+    {
+		$this->setOwner($this->user->getId());
 		$this->setUpdateDate(time());
 		if (!$this->hasChecks() AND $this->getStatus() == self::STATUS_ACTIVE) {
-			ilUtil::sendInfo(ilUserDefaultsPlugin::getInstance()->txt('msg_activation_failed'));
-			ilUtil::sendInfo(ilUserDefaultsPlugin::getInstance()->txt('msg_activation_failed'), true);
+            global $DIC;
+            $tpl = $DIC["tpl"];
+            $tpl->setOnScreenMessage('info', $this->pl->txt('msg_activation_failed'), true);
 			$this->setStatus(self::STATUS_INACTIVE);
 		}
 		parent::update();
 	}
 
-
-	/**
-	 *
-	 */
-	public function create() {
-		$this->setOwner(self::dic()->user()->getId());
+	public function create(): void
+    {
+		$this->setOwner($this->user->getId());
 		$this->setUpdateDate(time());
 		$this->setCreateDate(time());
 		if (!$this->hasChecks()) {
@@ -189,13 +163,10 @@ class UserSetting extends ActiveRecord {
 		parent::create();
 	}
 
-
-	/**
-	 * @param ilObjUser $user
-	 */
-	public function doAssignements(ilObjUser $user) {
+	public function doAssignements(ilObjUser $user): void
+    {
 		$this->setUsrObject($user);
-		if ($this->isValid()) {
+		if ($this->isValid() === true) {
 			$this->generatePortfolio();
 			$this->assignLocalRoles();
 			$this->assignCourses();
@@ -234,11 +205,8 @@ class UserSetting extends ActiveRecord {
 		}
 	}
 
-
-	/**
-	 * @param ilObjUser[] $ilObjUsers
-	 */
-	public function doMultipleAssignements(array $ilObjUsers) {
+	public function doMultipleAssignements(array $ilObjUsers): void
+    {
 		foreach ($ilObjUsers as $ilObjUser) {
 			if ($ilObjUser instanceof ilObjUser) {
 				$this->doAssignements($ilObjUser);
@@ -246,39 +214,32 @@ class UserSetting extends ActiveRecord {
 		}
 	}
 
-
-	/**
-	 *
-	 */
-	protected function assignToGlobalRole() {
+	protected function assignToGlobalRole(): void
+    {
 		$global_roles = $this->getGlobalRoles();
         foreach ($global_roles as $global_role) {
-            if (ilObject2::_lookupType($global_role) == 'role') {
-                self::dic()->rbac()->admin()->assignUser($global_role, $this->getUsrObject()->getId());
+            if (ilObject2::_lookupType((int)$global_role) == 'role') {
+                $this->rbac->admin()->assignUser($global_role, $this->getUsrObject()->getId());
             }
         }
 	}
 
-    /**
-     *
-     */
-    protected function unsignGlobalRole() {
+    protected function unsignGlobalRole(): void
+    {
         if (!$this->isUnsignGlobalRoles()) {
             return;
         }
 
         $global_roles = $this->getGlobalRoles();
         foreach ($global_roles as $global_role) {
-            if (ilObject2::_lookupType($global_role) == 'role') {
-                self::dic()->rbac()->admin()->deassignUser($global_role, $this->getUsrObject()->getId());
+            if (ilObject2::_lookupType((int)$global_role) == 'role') {
+                $this->rbac->admin()->deassignUser($global_role, $this->getUsrObject()->getId());
             }
         }
     }
 
-	/**
-	 *
-	 */
-	protected function assignLocalRoles() {
+	protected function assignLocalRoles(): void
+    {
 
 		$local_roles = $this->getAssignedLocalRoles();
 		if (count($local_roles) == 0) {
@@ -286,14 +247,12 @@ class UserSetting extends ActiveRecord {
 		}
 
 		foreach ($local_roles as $local_roles_obj_id) {
-			self::dic()->rbac()->admin()->assignUser((int) $local_roles_obj_id, (int) $this->getUsrObject()->getId());
+            $this->rbac->admin()->assignUser((int) $local_roles_obj_id, (int) $this->getUsrObject()->getId());
 		}
 	}
 
-    /**
-     *
-     */
-    protected function unsignLocalRoles() {
+    protected function unsignLocalRoles(): void
+    {
         if (!$this->isUnsignLocalRoles()) {
             return;
         }
@@ -305,22 +264,19 @@ class UserSetting extends ActiveRecord {
         }
 
         foreach ($local_roles as $local_roles_obj_id) {
-            self::dic()->rbac()->admin()->deassignUser((int) $local_roles_obj_id, (int) $this->getUsrObject()->getId());
+            $this->rbac->admin()->deassignUser((int) $local_roles_obj_id, (int) $this->getUsrObject()->getId());
         }
     }
 
-
-	/**
-	 *
-	 */
-	protected function assignCourses() {
+	protected function assignCourses(): void
+    {
 		$courses = $this->getAssignedCourses();
 		if (count($courses) == 0) {
 			return;
 		}
 
 		foreach ($courses as $crs_obj_id) {
-			if ($crs_obj_id == "" || ilObject2::_lookupType($crs_obj_id) != Courses::TYPE_CRS) {
+			if ($crs_obj_id == "" || ilObject2::_lookupType((int)$crs_obj_id) != "crs") {
 				continue;
 			}
 			$crs = new ilObjCourse($crs_obj_id,false);
@@ -334,11 +290,8 @@ class UserSetting extends ActiveRecord {
 		}
 	}
 
-
-	/**
-	 *
-	 */
-	protected function unsubscribeCourses() {
+	protected function unsubscribeCourses(): void
+    {
 		if (!$this->isUnsubscrfromcrsAndcategoriesDesktop()) {
 			return;
 		}
@@ -349,7 +302,7 @@ class UserSetting extends ActiveRecord {
 		}
 
 		foreach ($courses as $crs_obj_id) {
-			if ($crs_obj_id === "" || ilObject2::_lookupType($crs_obj_id) !== Courses::TYPE_CRS) {
+			if ($crs_obj_id === "" || ilObject2::_lookupType((int)$crs_obj_id) !== "crs") {
 				continue;
 			}
 			$part = ilCourseParticipants::_getInstanceByObjId($crs_obj_id);
@@ -361,33 +314,34 @@ class UserSetting extends ActiveRecord {
 		}
 	}
 
-	/**
-	 *
-	 */
-	protected function assignGroups() {
+	protected function assignGroups(): void
+    {
         $groups = $this->getAssignedGroupes();
 
         foreach ($groups as $grp_obj_id) {
-			if ($grp_obj_id == "" || ilObject2::_lookupType($grp_obj_id) != 'grp') {
+			if ($grp_obj_id == "" || ilObject2::_lookupType((int)$grp_obj_id) != 'grp') {
 				continue;
 			}
 			$part = ilGroupParticipants::_getInstanceByObjId($grp_obj_id);
 			$usr_id = $this->getUsrObject()->getId();
 
 			if ($this->isAssignedGroupsOptionRequest()) {
-				//ilGroupMembershipMailNotification::TYPE_NOTIFICATION_REGISTRATION_REQUEST,
-				$added = $part->addSubscriber($usr_id);
-				$part->updateSubscriptionTime($usr_id, time());
-				$part->sendNotification(31, $usr_id);
+                if($part->isAssigned($usr_id) === false && $part->isSubscriber($usr_id) === false) {
+                    //ilGroupMembershipMailNotification::TYPE_NOTIFICATION_REGISTRATION_REQUEST,
+                    $part->addSubscriber($usr_id);
+                    $part->updateSubscriptionTime($usr_id, time());
+                    $part->sendNotification(31, $usr_id);
+                }
 			} else {
-				$added = $part->add($usr_id, IL_GRP_MEMBER);
+				$part->add($usr_id, ilParticipants::IL_GRP_MEMBER);
 			}
 		}
 
         $this->assignGroupFromQueue();
 	}
 
-    protected function unsubscribeGroups() {
+    protected function unsubscribeGroups(): void
+    {
         if (!$this->isUnsubscrfromgrp()) {
             return;
         }
@@ -397,26 +351,25 @@ class UserSetting extends ActiveRecord {
         }
 
         foreach ($groups as $id) {
-            if ($id === "" || ilObject2::_lookupType($id) !== "grp") {
+            if ($id === "" || ilObject2::_lookupType((int)$id) !== "grp") {
                 continue;
             }
 	    $usr_id = $this->getUsrObject()->getId();
-	    $reference=array_shift(ilObject2::_getAllReferences($id));
-	    $groupRoles = self::dic()->rbac()->review()->getRolesOfRoleFolder($reference);
+            $references = ilObject2::_getAllReferences($id);
+            $reference= array_shift($references);
+	    $groupRoles =$this->rbac->review()->getRolesOfRoleFolder($reference);
 	    foreach ($groupRoles as $grouprole) {
 		    if (ilObject2::_lookupTitle($grouprole) == 'il_grp_member_'.$reference) {
 			    $memberRole = $grouprole;
-	    		    self::dic()->rbac()->admin()->deassignUser($memberRole,$usr_id);
+	    		   $this->rbac->admin()->deassignUser($memberRole,$usr_id);
 			    continue;
 		    }
 	    }
         }
     }
 
-    /**
-     * @return int|null
-     */
-	protected function assignGroupFromQueue()
+
+	protected function assignGroupFromQueue(): void
     {
         $groups_queue = $this->getAssignedGroupsQueue();
         $part_objs = array_map(function($grp_obj_id) {
@@ -425,7 +378,7 @@ class UserSetting extends ActiveRecord {
         /** @var ilGroupParticipants $part_obj */
         foreach ($part_objs as $part_obj) {
             if ($part_obj->isMember($this->getUsrObject()->getId())) {
-                return null;
+                return;
             }
         }
 
@@ -459,9 +412,10 @@ class UserSetting extends ActiveRecord {
 
         if (is_int($group_to_add)) {
             $part = ilGroupParticipants::_getInstanceByObjId($group_to_add);
-            $part->add($this->getUsrObject()->getId(), IL_GRP_MEMBER);
+            $part->add($this->getUsrObject()->getId(), ilParticipants::IL_GRP_MEMBER);
             if (!$this->isGroupsQueueDesktop()) {
-                $ref_id = array_shift(ilObjGroup::_getAllReferences($group_to_add));
+                $allReferences = ilObjGroup::_getAllReferences($group_to_add);
+                $ref_id = array_shift($allReferences);
 
                 //ILIAS 5.4
                 if(method_exists(ilObjUser::class,'_dropDesktopItem')) {
@@ -475,25 +429,20 @@ class UserSetting extends ActiveRecord {
         }
     }
 
+	protected function isValid(): bool
+    {
+		$do_assignements = true;
+		foreach ($this->getUdfCheckObjects() as $udf) {
+			if (!$udf->isValid($this->getUsrObject())) {
+				$do_assignements = true;
+			}
+		}
 
-	/**
-	 * @return bool
-	 */
-	protected function isValid() {
-        $do_assignements = false;
-        foreach ($this->getUdfCheckObjects() as $udf) {
-            if ($udf->isValid($this->getUsrObject())) {
-                $do_assignements = true;
-            }
-        }
-        return $do_assignements;
-    }
+		return $do_assignements;
+	}
 
-
-	/**
-	 *
-	 */
-	protected function generatePortfolio() {
+	protected function generatePortfolio(): void
+    {
 		if ($this->getPortfolioTemplateId() < 10) {
 			return;
 		}
@@ -560,7 +509,7 @@ class UserSetting extends ActiveRecord {
 		// Set permissions
 		$ilPortfolioAccessHandler = new ilPortfolioAccessHandler();
 		foreach ($this->getPortfolioAssignedToGroups() as $grp_obj_id) {
-			if (ilObject2::_lookupType($grp_obj_id) == 'grp') {
+			if (ilObject2::_lookupType((int)$grp_obj_id) == 'grp') {
 				$ilPortfolioAccessHandler->removePermission($target->getId(), $grp_obj_id);
 				$ilPortfolioAccessHandler->addPermission($target->getId(), $grp_obj_id);
 			}
@@ -569,11 +518,11 @@ class UserSetting extends ActiveRecord {
 		$ilUser = $backup_user;
 	}
 
-    protected function removePortfolio()
+    protected function removePortfolio(): void
     {
         $data = ilObjPortfolio::getPortfoliosOfUser($this->getUsrObject()->getId());
         $ilUser = $this->getUsrObject();
-        $target = ilObjPortfolio::getDefaultPortfolio($ilUser->id);
+        $target = ilObjPortfolio::getDefaultPortfolio($ilUser->getId());
         $access_handler = new ilPortfolioAccessHandler();
 
         foreach ($data as $p) {
@@ -590,28 +539,18 @@ class UserSetting extends ActiveRecord {
         }
     }
 
-
-	/**
-	 * @return bool
-	 */
-	public function hasChecks() {
+	public function hasChecks(): bool
+    {
 		return UDFCheck::hasChecks($this->getId());
 	}
 
+	public function afterObjectLoad(): void
+    {
 
-	/**
-	 *
-	 */
-	public function afterObjectLoad() {
-		$ilUDFChecks = UDFCheck::getChecksByParent($this->getId());
-		$this->setUdfCheckObjects($ilUDFChecks);
 	}
 
-
-	/**
-	 *
-	 */
-	protected function addSkills() {
+	protected function addSkills(): void
+    {
 		$user = $this->getUsrObject();
 		$skill_ids = $this->getAllPortfolioSkills();
 
@@ -621,10 +560,8 @@ class UserSetting extends ActiveRecord {
 	}
 
 
-	/**
-	 * @return array
-	 */
-	protected function getAllPortfolioSkills() {
+	protected function getAllPortfolioSkills(): array
+    {
 		$user = $this->getUsrObject();
 		$pskills = array_keys(ilPersonalSkill::getSelectedUserSkills($user->getId()));
 		$skill_ids = array();
@@ -657,10 +594,10 @@ class UserSetting extends ActiveRecord {
 
 
 	/**
-	 * @return UserSetting
 	 * Duplicate this setting and it's dependencies and save everything to the databse.
 	 */
-	public function duplicate() {
+	public function duplicate(): UserSetting
+    {
 		/**
 		 * @var UserSetting $copy
 		 */
@@ -684,7 +621,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  integer
 	 * @con_length     8
 	 */
-	protected $id = 0;
+	protected ?int $id = 0;
 	/**
 	 * @var string
 	 *
@@ -692,7 +629,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype text
 	 * @con_length    256
 	 */
-	protected $title = '';
+	protected string $title = '';
 	/**
 	 * @var string
 	 *
@@ -700,7 +637,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype text
 	 * @con_length    1024
 	 */
-	protected $description = '';
+	protected string $description = '';
 	/**
 	 * @var int
 	 *
@@ -708,7 +645,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  integer
 	 * @con_length     1
 	 */
-	protected $status = self::STATUS_INACTIVE;
+	protected int $status = self::STATUS_INACTIVE;
 	/**
 	 * @var array
 	 *
@@ -716,7 +653,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $global_roles = [4];
+	protected array $global_roles = [4];
     /**
      * @var bool
      *
@@ -724,7 +661,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $unsign_global_roles = false;
+    protected ?bool $unsign_global_roles = false;
 	/**
 	 * @var int
 	 *
@@ -732,7 +669,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  integer
 	 * @con_length     8
 	 */
-	protected $owner = 6;
+	protected int $owner = 6;
 	/**
 	 * @var int
 	 *
@@ -740,7 +677,7 @@ class UserSetting extends ActiveRecord {
 	 * @db_fieldtype        timestamp
 	 * @db_is_notnull       true
 	 */
-	protected $create_date;
+	protected int $create_date = 0;
 	/**
 	 * @var int
 	 *
@@ -748,7 +685,7 @@ class UserSetting extends ActiveRecord {
 	 * @db_fieldtype        timestamp
 	 * @db_is_notnull       true
 	 */
-	protected $update_date;
+	protected int $update_date = 0;
 	/**
 	 * @var array
 	 *
@@ -756,7 +693,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $assigned_local_roles = array();
+	protected array $assigned_local_roles = array();
     /**
      * @var bool
      *
@@ -764,7 +701,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $unsign_local_roles = false;
+    protected ?bool $unsign_local_roles = false;
 	/**
 	 * @var array
 	 *
@@ -772,7 +709,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $assigned_courses = array();
+	protected array $assigned_courses = array();
 	/**
 	 * @var array
 	 *
@@ -780,7 +717,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $assigned_groupes = array();
+	protected array $assigned_groupes = array();
 	/**
 	 * @var bool
 	 *
@@ -788,7 +725,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype integer
 	 * @con_length    1
 	 */
-	protected $unsubscr_from_crs_and_cat = false;
+	protected ?bool $unsubscr_from_crs_and_cat = false;
     /**
      * @var bool
      *
@@ -796,7 +733,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $unsubscr_from_grp = false;
+    protected ?bool $unsubscr_from_grp = false;
 	/**
 	 * @var bool
 	 *
@@ -804,7 +741,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype integer
 	 * @con_length    1
 	 */
-	protected $assigned_groups_option_request = false;
+	protected ?bool $assigned_groups_option_request = false;
     /**
      * @var array
      *
@@ -812,7 +749,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype  text
      * @con_length     256
      */
-	protected $assigned_groups_queue = [];
+	protected array $assigned_groups_queue = [];
     /**
      * @var bool
      *
@@ -820,7 +757,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype  integer
      * @con_length     1
      */
-	protected $groups_queue_desktop = false;
+	protected bool $groups_queue_desktop = false;
     /**
      * @var bool
      *
@@ -828,7 +765,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype  integer
      * @con_length     1
      */
-	protected $groups_queue_parallel = false;
+	protected bool $groups_queue_parallel = false;
 	/**
 	 * @var int
 	 *
@@ -836,7 +773,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  integer
 	 * @con_length     8
 	 */
-	protected $portfolio_template_id = null;
+	protected ?int $portfolio_template_id = null;
 	/**
 	 * @var array
 	 *
@@ -844,7 +781,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $portfolio_assigned_to_groups = array();
+	protected array $portfolio_assigned_to_groups = array();
 	/**
 	 * @var string
 	 *
@@ -852,7 +789,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype text
 	 * @con_length    256
 	 */
-	protected $blog_name = '';
+	protected string $blog_name = '';
 	/**
 	 * @var string
 	 *
@@ -860,7 +797,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype text
 	 * @con_length    256
 	 */
-	protected $portfolio_name = '';
+	protected string $portfolio_name = '';
     /**
      * @var bool
      *
@@ -868,7 +805,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $remove_from_portfolio = false;
+    protected ?bool $remove_from_portfolio = false;
 	/**
 	 * @var array
 	 *
@@ -876,7 +813,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $assigned_orgus = array();
+	protected array $assigned_orgus = array();
     /**
      * @var int
      *
@@ -884,7 +821,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype  integer
      * @con_length     8
      */
-    protected $assigned_orgu_position = null;
+    protected ?int $assigned_orgu_position = null;
     /**
      * @var bool
      *
@@ -892,7 +829,7 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $unsubscribe_from_orgus = false;
+    protected ?bool $unsubscribe_from_orgus = false;
 	/**
 	 * @var array
 	 *
@@ -900,7 +837,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype  text
 	 * @con_length     256
 	 */
-	protected $assigned_studyprograms = array();
+	protected array $assigned_studyprograms = array();
     /**
      * @var bool
      *
@@ -908,11 +845,11 @@ class UserSetting extends ActiveRecord {
      * @con_fieldtype integer
      * @con_length    1
      */
-    protected $unsubscr_from_studyprograms = false;
+    protected ?bool $unsubscr_from_studyprograms = false;
 	/**
 	 * @var UDFCheck[]
 	 */
-	protected $udf_check_objects = array();
+	protected array $udf_check_objects = array();
 	/**
 	 * @var bool
 	 *
@@ -920,7 +857,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype integer
 	 * @con_length    1
 	 */
-	protected $on_create = true;
+	protected bool $on_create = true;
 	/**
 	 * @var bool
 	 *
@@ -928,7 +865,7 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype integer
 	 * @con_length    1
 	 */
-	protected $on_update = false;
+	protected bool $on_update = false;
 	/**
 	 * @var bool
 	 *
@@ -936,43 +873,26 @@ class UserSetting extends ActiveRecord {
 	 * @con_fieldtype integer
 	 * @con_length    1
 	 */
-	protected $on_manual = true;
+	protected bool $on_manual = true;
 
 
-	/**
-	 * @param $field_name
-	 *
-	 * @return mixed|null|string
-	 */
-	public function sleep($field_name) {
-		switch ($field_name) {
-            case 'global_roles':
-            case 'assigned_local_roles':
-			case 'assigned_courses':
-			case 'assigned_groupes':
-			case 'portfolio_assigned_to_groups':
-            case 'assigned_groups_queue':
-			case 'assigned_orgus':
-			case 'assigned_studyprograms':
-				return json_encode($this->{$field_name});
-				break;
-			case 'create_date':
-			case 'update_date':
-				return date(Config::SQL_DATE_FORMAT, $this->{$field_name});
-				break;
-		}
+	public function sleep($field_name): string|bool|null
+    {
+        return match ($field_name) {
+            'global_roles', 'assigned_local_roles', 'assigned_courses', 'assigned_groupes', 'portfolio_assigned_to_groups', 'assigned_groups_queue', 'assigned_orgus', 'assigned_studyprograms' => json_encode($this->{$field_name}),
+            'create_date', 'update_date' => date("Y-m-d H:i:s", $this->{$field_name}),
+            default => null,
+        };
 
-		return null;
-	}
+    }
 
 
 	/**
 	 * @param $field_name
 	 * @param $field_value
-	 *
-	 * @return mixed|null
-	 */
-	public function wakeUp($field_name, $field_value) {
+     */
+	public function wakeUp($field_name, $field_value): array|bool|int|null
+    {
 		switch ($field_name) {
 			case 'global_roles':
 			case 'assigned_local_roles':
@@ -995,556 +915,374 @@ class UserSetting extends ActiveRecord {
 		return null;
 	}
 
-
-    /**
-     * @return bool
-     */
     public function isGroupsQueueDesktop() : bool
     {
-        return $this->groups_queue_desktop ?? false;
+        return (bool)$this->groups_queue_desktop ?? false;
     }
 
 
-    /**
-     * @param bool $groups_queue_desktop
-     */
-    public function setGroupsQueueDesktop(bool $groups_queue_desktop)
+    public function setGroupsQueueDesktop(bool $groups_queue_desktop): void
     {
         $this->groups_queue_desktop = $groups_queue_desktop;
     }
 
-
-    /**
-     * @return bool
-     */
     public function isGroupsQueueParallel() : bool
     {
         return $this->groups_queue_parallel ?? false;
     }
 
 
-    /**
-     * @param bool $groups_queue_parallel
-     */
-    public function setGroupsQueueParallel(bool $groups_queue_parallel)
+    public function setGroupsQueueParallel(bool $groups_queue_parallel): void
     {
         $this->groups_queue_parallel = $groups_queue_parallel;
     }
 
-
-	/**
-	 * @param string $description
-	 */
-	public function setDescription($description) {
+	public function setDescription(string $description): void
+    {
 		$this->description = $description;
 	}
 
-
-	/**
-	 * @return string
-	 */
-	public function getDescription() {
+	public function getDescription(): string
+    {
 		return $this->description;
 	}
 
-
-	/**
-	 * @param int $id
-	 */
-	public function setId($id) {
+	public function setId(int $id): void
+    {
 		$this->id = $id;
 	}
 
-
-	/**
-	 * @return int
-	 */
-	public function getId() {
+	public function getId(): int
+    {
 		return $this->id;
 	}
 
 
-	/**
-	 * @param int $status
-	 */
-	public function setStatus($status) {
+	public function setStatus(int $status): void
+    {
 		$this->status = $status;
 	}
 
-
-	/**
-	 * @return int
-	 */
-	public function getStatus() {
+	public function getStatus(): int
+    {
 		return $this->status;
 	}
 
 
-	/**
-	 * @param string $title
-	 */
-	public function setTitle($title) {
+	public function setTitle(string $title): void
+    {
 		$this->title = $title;
 	}
 
-
-	/**
-	 * @return string
-	 */
-	public function getTitle() {
+	public function getTitle(): string
+    {
 		return $this->title;
 	}
 
 
-	/**
-	 * @param array $assigned_local_roles
-	 */
-	public function setAssignedLocalRoles($assigned_local_roles) {
+	public function setAssignedLocalRoles(array $assigned_local_roles): void
+    {
 		$this->assigned_local_roles = $assigned_local_roles;
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public function getAssignedLocalRoles() {
+	public function getAssignedLocalRoles(): array
+    {
 		return $this->assigned_local_roles;
 	}
 
-    /**
-     * @param boolean $unsign_local_roles
-     */
-    public function setUnsignLocalRoles($unsign_local_roles) {
+    public function setUnsignLocalRoles(bool $unsign_local_roles): void
+    {
         $this->unsign_local_roles = $unsign_local_roles;
     }
 
-
-    /**
-     * @return array
-     */
-    public function isUnsignLocalRoles() {
-        return $this->unsign_local_roles;
+    public function isUnsignLocalRoles(): bool
+    {
+        return (bool)$this->unsign_local_roles;
     }
 
-
-	/**
-	 * @param array $assigned_courses
-	 */
-	public function setAssignedCourses($assigned_courses) {
+	public function setAssignedCourses($assigned_courses): void
+    {
 		$this->assigned_courses = $assigned_courses;
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public function getAssignedCourses() {
+	public function getAssignedCourses(): array
+    {
 		return $this->assigned_courses;
 	}
 
 
-	/**
-	 * @param array $assigned_groupes
-	 */
-	public function setAssignedGroupes($assigned_groupes) {
+	public function setAssignedGroupes(array $assigned_groupes): void
+    {
 		$this->assigned_groupes = $assigned_groupes;
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public function getAssignedGroupes() {
+	public function getAssignedGroupes(): array
+    {
 		return $this->assigned_groupes;
 	}
 
-
-	/**
-	 * @return bool
-	 */
-	public function isAssignedGroupsOptionRequest() {
-		return $this->assigned_groups_option_request;
+	public function isAssignedGroupsOptionRequest(): bool
+    {
+		return (bool)$this->assigned_groups_option_request;
 	}
 
-
-	/**
-	 * @param bool $assigned_groups_option_request
-	 */
-	public function setAssignedGroupsOptionRequest($assigned_groups_option_request) {
+	public function setAssignedGroupsOptionRequest(bool $assigned_groups_option_request): void
+    {
 		$this->assigned_groups_option_request = $assigned_groups_option_request;
 	}
 
-
-    /**
-     * @return array
-     */
     public function getAssignedGroupsQueue() : array
     {
         return $this->assigned_groups_queue;
     }
 
-
-    /**
-     * @param array $assigned_groups_queue
-     */
-    public function setAssignedGroupsQueue(array $assigned_groups_queue)
+    public function setAssignedGroupsQueue(array $assigned_groups_queue): void
     {
         $this->assigned_groups_queue = $assigned_groups_queue;
     }
 
-
-	/**
-	 * @return bool
-	 */
-	public function isUnsubscrfromcrsAndcategoriesDesktop() {
-		return $this->unsubscr_from_crs_and_cat;
+	public function isUnsubscrfromcrsAndcategoriesDesktop(): bool
+    {
+		return (bool)$this->unsubscr_from_crs_and_cat;
 	}
 
-    /**
-     * @param bool $unsubscr_from_crs_and_cat
-     */
-    public function setUnsubscrfromcrsAndcategoriesDesktop($unsubscr_from_crs_and_cat) {
+    public function setUnsubscrfromcrsAndcategoriesDesktop(bool $unsubscr_from_crs_and_cat): void
+    {
         $this->unsubscr_from_crs_and_cat = $unsubscr_from_crs_and_cat;
     }
 
-    /**
-     * @return bool
-     */
-    public function isUnsubscrfromgrp() {
-        return $this->unsubscr_from_grp;
+    public function isUnsubscrfromgrp(): bool
+    {
+        return (bool)$this->unsubscr_from_grp;
     }
 
-    /**
-     * @param bool $unsubscr_from_grp
-     */
-    public function setUnsubscrfromgrpDesktop($unsubscr_from_grp) {
+    public function setUnsubscrfromgrpDesktop(bool $unsubscr_from_grp): void
+    {
         $this->unsubscr_from_grp = $unsubscr_from_grp;
     }
 
 	/**
 	 * @param UDFCheck[] $udf_check_objects
 	 */
-	public function setUdfCheckObjects($udf_check_objects) {
+	public function setUdfCheckObjects(array $udf_check_objects): void
+    {
 		$this->udf_check_objects = $udf_check_objects;
 	}
 
-
-	/**
-	 * @return UDFCheck[]
-	 */
-	public function getUdfCheckObjects() {
+	public function getUdfCheckObjects(): array
+    {
+        //todo
+        $ilUDFChecks = UDFCheck::getChecksByParent($this->getId());
+        $this->setUdfCheckObjects($ilUDFChecks);
 		return $this->udf_check_objects;
 	}
 
-
-	/**
-	 * @param array $global_roles
-	 */
-	public function setGlobalRoles($global_roles) {
+	public function setGlobalRoles(array $global_roles): void
+    {
 		$this->global_roles = $global_roles;
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public function getGlobalRoles() {
+	public function getGlobalRoles(): array
+    {
 		return $this->global_roles;
 	}
 
-    /**
-     * @param array $unsign_global_roles
-     */
-    public function setUnsignGlobalRoles($unsign_global_roles) {
+    public function setUnsignGlobalRoles(bool $unsign_global_roles): void
+    {
         $this->unsign_global_roles = $unsign_global_roles;
     }
 
-    /**
-     * @return bool
-     */
-    public function isUnsignGlobalRoles() {
-        return $this->unsign_global_roles;
+    public function isUnsignGlobalRoles(): bool
+    {
+        return (bool)$this->unsign_global_roles;
     }
 
-	/**
-	 * @param array $portfolio_assigned_to_groups
-	 */
-	public function setPortfolioAssignedToGroups($portfolio_assigned_to_groups) {
+	public function setPortfolioAssignedToGroups(array $portfolio_assigned_to_groups): void
+    {
 		$this->portfolio_assigned_to_groups = $portfolio_assigned_to_groups;
 	}
 
-
-	/**
-	 * @return array
-	 */
-	public function getPortfolioAssignedToGroups() {
+	public function getPortfolioAssignedToGroups(): array
+    {
 		return $this->portfolio_assigned_to_groups;
 	}
 
-
-	/**
-	 * @param int $portfolio_template_id
-	 */
-	public function setPortfolioTemplateId($portfolio_template_id) {
+	public function setPortfolioTemplateId(int $portfolio_template_id): void
+    {
 		$this->portfolio_template_id = $portfolio_template_id;
 	}
 
 
-	/**
-	 * @return int
-	 */
-	public function getPortfolioTemplateId() {
+	public function getPortfolioTemplateId(): ?int
+    {
 		return $this->portfolio_template_id;
 	}
 
-
-	/**
-	 * @param int $create_date
-	 */
-	public function setCreateDate($create_date) {
+	public function setCreateDate(int $create_date): void
+    {
 		$this->create_date = $create_date;
 	}
 
-
-	/**
-	 * @return int
-	 */
-	public function getCreateDate() {
+	public function getCreateDate(): int
+    {
 		return $this->create_date;
 	}
 
-
-	/**
-	 * @param int $owner
-	 */
-	public function setOwner($owner) {
+	public function setOwner(int $owner): void
+    {
 		$this->owner = $owner;
 	}
 
-
-	/**
-	 * @return int
-	 */
-	public function getOwner() {
+	public function getOwner(): int
+    {
 		return $this->owner;
 	}
 
-
-	/**
-	 * @param int $update_date
-	 */
-	public function setUpdateDate($update_date) {
+	public function setUpdateDate(int $update_date): void
+    {
 		$this->update_date = $update_date;
 	}
 
-
-	/**
-	 * @return int
-	 */
-	public function getUpdateDate() {
+	public function getUpdateDate(): int
+    {
 		return $this->update_date;
 	}
 
-
-	/**
-	 * @param ilObjUser $ilObjUser
-	 */
-	public function setUsrObject($ilObjUser) {
+	public function setUsrObject(ilObjUser $ilObjUser): void
+    {
 		$this->usr_object = $ilObjUser;
 	}
 
-
-	/**
-	 * @return ilObjUser
-	 */
-	public function getUsrObject() {
+	public function getUsrObject(): ilObjUser
+    {
 		return $this->usr_object;
 	}
 
-
-	/**
-	 * @return string
-	 */
-	public function getBlogName() {
+	public function getBlogName(): string
+    {
 		return $this->blog_name;
 	}
 
-
-	/**
-	 * @param string $blog_name
-	 */
-	public function setBlogName($blog_name) {
+	public function setBlogName(string $blog_name): void
+    {
 		$this->blog_name = $blog_name;
 	}
 
-
-	/**
-	 * @return string
-	 */
-	public function getPortfolioName() {
+	public function getPortfolioName(): string
+    {
 		return $this->portfolio_name;
 	}
 
-
-	/**
-	 * @param string $portfolio_name
-	 */
-	public function setPortfolioName($portfolio_name) {
+	public function setPortfolioName(string $portfolio_name): void
+    {
 		$this->portfolio_name = $portfolio_name;
 	}
 
-    /**
-     * @return string
-     */
-    public function getRemovePortfolio() {
+    public function getRemovePortfolio(): string
+    {
         return $this->portfolio_name;
     }
 
-
-    /**
-     * @param string $val
-     */
-    public function setRemovePortfolio($val) {
+    public function setRemovePortfolio(string $val): void
+    {
         $this->portfolio_name = $val;
     }
 
-
-	/**
-	 * @return array
-	 */
-	public function getAssignedOrgus() {
+	public function getAssignedOrgus(): array
+    {
 		return $this->assigned_orgus;
 	}
 
-
-	/**
-	 * @param array $assigned_orgus
-	 */
-	public function setAssignedOrgus($assigned_orgus) {
+	public function setAssignedOrgus(array $assigned_orgus): void
+    {
 		$this->assigned_orgus = $assigned_orgus;
 	}
 
-    /**
-     * @return int
-     */
-    public function getAssignedOrguPosition() {
+    public function getAssignedOrguPosition(): ?int
+    {
         return $this->assigned_orgu_position;
     }
 
-
-    /**
-     * @param int $id
-     */
-    public function setAssignedOrguPosition($id) {
+    public function setAssignedOrguPosition(int $id): void
+    {
         $this->assigned_orgu_position = $id;
     }
 
-    /**
-     * @return bool
-     */
-    public function isUnsubscrFromOrgus() {
-        return $this->unsubscribe_from_orgus;
+    public function isUnsubscrFromOrgus(): bool
+    {
+        return (bool)$this->unsubscribe_from_orgus;
     }
 
-    /**
-     * @param bool $state
-     */
-    public function setUnsubscrFromOrgus($state) {
+    public function setUnsubscrFromOrgus(bool $state): void
+    {
         $this->unsubscribe_from_orgus = $state;
     }
 
-
-	/**
-	 * @return array
-	 */
-	public function getAssignedStudyprograms() {
+	public function getAssignedStudyprograms(): array
+    {
 		return $this->assigned_studyprograms;
 	}
 
-	/**
-	 * @param array $state
-	 */
-	public function setAssignedStudyprograms($state) {
+	public function setAssignedStudyprograms(array $state): void
+    {
 		$this->assigned_studyprograms = $state;
 	}
 
-    /**
-     * @return bool
-     */
-    public function isUnsubscrFromStudyprograms() {
-        return $this->unsubscr_from_studyprograms;
+    public function isUnsubscrFromStudyprograms(): bool
+    {
+        return (bool)$this->unsubscr_from_studyprograms;
     }
 
-    /**
-     * @param bool $state
-     */
-    public function setUnsubscrFromstudyprograms($state) {
+    public function setUnsubscrFromstudyprograms(bool $state): void
+    {
         $this->unsubscr_from_studyprograms = $state;
     }
 
-	/**
-	 * @return bool
-	 */
-	public function isOnCreate() {
-		return $this->on_create;
+	public function isOnCreate(): bool
+    {
+		return (bool)$this->on_create;
 	}
 
 
-	/**
-	 * @param bool $on_create
-	 */
-	public function setOnCreate($on_create) {
+	public function setOnCreate(bool $on_create): void
+    {
 		$this->on_create = $on_create;
 	}
 
-
-	/**
-	 * @return bool
-	 */
-	public function isOnUpdate() {
+	public function isOnUpdate(): bool
+    {
 		return $this->on_update;
 	}
 
-
-	/**
-	 * @param bool $on_update
-	 */
-	public function setOnUpdate($on_update) {
+	public function setOnUpdate(bool $on_update): void
+    {
 		$this->on_update = $on_update;
 	}
 
-
-	/**
-	 * @return bool
-	 */
-	public function isOnManual() {
-		return $this->on_manual;
+	public function isOnManual(): bool
+    {
+		return (bool)$this->on_manual;
 	}
 
-
-	/**
-	 * @param bool $on_manual
-	 */
-	public function setOnManual($on_manual) {
+	public function setOnManual(bool $on_manual): void
+    {
 		$this->on_manual = $on_manual;
 	}
 
-
-	/**
-	 * @return bool
-	 */
-	protected function assignOrgunits() {
+	protected function assignOrgunits(): bool
+    {
 		if (!count($this->getAssignedOrgus())) {
 			return false;
 		}
 		foreach ($this->getAssignedOrgus() as $orgu_obj_id) {
-			if (ilObject2::_lookupType($orgu_obj_id) != 'orgu') {
+			if (ilObject2::_lookupType((int) $orgu_obj_id) != 'orgu') {
 				continue;
 			}
 
 			$usr_id = $this->getUsrObject()->getId();
 			$orgu_ref_ids = ilObjOrgUnit::_getAllReferences($orgu_obj_id);
-			$orgu_ref_id = array_shift(array_values($orgu_ref_ids));
+            $array_values = array_values($orgu_ref_ids);
+            $orgu_ref_id = array_shift($array_values);
 			
 			if (!$orgu_ref_id) {
 				continue;
@@ -1558,48 +1296,54 @@ class UserSetting extends ActiveRecord {
 		return true;
 	}
 
-    /**
-     * @return bool
-     */
-    protected function unsubscribeOrgunits() {
+    protected function unsubscribeOrgunits(): bool
+    {
         if (!count($this->getAssignedOrgus())) {
             return false;
         }
 
+
         foreach ($this->getAssignedOrgus() as $orgu_obj_id) {
-            if (ilObject2::_lookupType($orgu_obj_id) != 'orgu') {
+            if (ilObject2::_lookupType((int)$orgu_obj_id) != 'orgu') {
                 continue;
             }
 
             $usr_id = $this->getUsrObject()->getId();
             $orgu_ref_ids = ilObjOrgUnit::_getAllReferences($orgu_obj_id);
-            $orgu_ref_id = array_shift(array_values($orgu_ref_ids));
+            $array_values = array_values($orgu_ref_ids);
+            $orgu_ref_id = array_shift($array_values);
 
             if (!$orgu_ref_id) {
                 continue;
             }
 
             $orgUnit = new ilObjOrgUnit($orgu_ref_id, true);
-            $ua = ilOrgUnitUserAssignment::findOrCreateAssignment($usr_id, (int)$this->getAssignedOrguPosition(), $orgUnit->getRefId());
+
+            if (!is_null($this->getAssignedOrguPosition())) {
+                $ua = ilOrgUnitUserAssignment::findOrCreateAssignment($usr_id, (int)$this->getAssignedOrguPosition(), $orgUnit->getRefId());
+            }
+
             $ua->delete();
         }
 
         return true;
     }
 
-	protected function assignStudyprograms() {
+	protected function assignStudyprograms(): bool
+    {
 		if (!count($this->getAssignedStudyprograms())) {
 			return false;
 		}
 		foreach ($this->getAssignedStudyprograms() as $studyProgramObjId) {
-			if (ilObject2::_lookupType($studyProgramObjId) != 'prg') {
+			if (ilObject2::_lookupType((int) $studyProgramObjId) != 'prg') {
 				continue;
 			}
 
 			$usr_id = $this->getUsrObject()->getId();
 
 			$prg_ref_ids = ilObjStudyProgramme::_getAllReferences($studyProgramObjId);
-			$prg_ref_id = array_shift(array_values($prg_ref_ids));
+            $array_values = array_values($prg_ref_ids);
+            $prg_ref_id = array_shift($array_values);
 			if (!$prg_ref_id) {
 				continue;
 			}
@@ -1613,20 +1357,22 @@ class UserSetting extends ActiveRecord {
 		return true;
 	}
 
-    protected function unsubscribeStudyprograms() {
+    protected function unsubscribeStudyprograms(): bool
+    {
 
         if (!count($this->getAssignedStudyprograms())) {
             return false;
         }
         foreach ($this->getAssignedStudyprograms() as $studyProgramObjId) {
-            if (ilObject2::_lookupType($studyProgramObjId) != 'prg') {
+            if (ilObject2::_lookupType((int)$studyProgramObjId) != 'prg') {
                 continue;
             }
 
             $usr_id = $this->getUsrObject()->getId();
 
             $prg_ref_ids = ilObjStudyProgramme::_getAllReferences($studyProgramObjId);
-            $prg_ref_id = array_shift(array_values($prg_ref_ids));
+            $array_values = array_values($prg_ref_ids);
+            $prg_ref_id = array_shift($array_values);
             if (!$prg_ref_id) {
                 continue;
             }
@@ -1645,12 +1391,8 @@ class UserSetting extends ActiveRecord {
         return true;
     }
 
-
-
-    /**
-	 * @return UDFCheck[]
-	 */
-	protected function copyDependencies($copy) {
+	protected function copyDependencies($copy): array
+    {
 		$original_udf_checks = $this->getUdfCheckObjects();
 		/** @var UDFCheck[] $new_udf_checks */
 		$new_udf_checks = [];
@@ -1661,14 +1403,7 @@ class UserSetting extends ActiveRecord {
 		return $new_udf_checks;
 	}
 
-
-	/**
-	 * @param UDFCheck    $original_udf_check
-	 * @param UserSetting $parent
-	 *
-	 * @return mixed
-	 */
-	protected function copyUdfCheck($original_udf_check, $parent) {
+	protected function copyUdfCheck(UDFCheck $original_udf_check, UserSetting $parent): UDFCheck {
 		$next_id = $original_udf_check->getArConnector()->nextID($original_udf_check);
 		/** @var UDFCheck $new_udf_check */
 		$new_udf_check = $original_udf_check->copy($next_id);

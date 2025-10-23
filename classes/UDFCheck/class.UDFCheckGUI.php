@@ -2,7 +2,6 @@
 
 require_once __DIR__ . "/../../vendor/autoload.php";
 
-use srag\DIC\UserDefaults\DICTrait;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheck;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheckFormGUI;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheckTableGUI;
@@ -18,7 +17,6 @@ use srag\Plugins\UserDefaults\Utils\UserDefaultsTrait;
  */
 class UDFCheckGUI {
 
-	use DICTrait;
 	use UserDefaultsTrait;
 	const PLUGIN_CLASS_NAME = ilUserDefaultsPlugin::class;
 	const CMD_INDEX = 'index';
@@ -33,26 +31,33 @@ class UDFCheckGUI {
 	const CMD_DELETE = 'delete';
 	const IDENTIFIER_CATEGORY = 'field_category';
 	const IDENTIFIER = 'check_id';
+    private ilCtrl $ctrl;
+    private ilUserDefaultsPlugin $pl;
+    private \ILIAS\DI\UIServices $ui;
 
+    /**
+     * @throws ilCtrlException
+     */
+	public function __construct(UserSettingsGUI|UDFCheckGUI $parent_gui) {
+        global $DIC;
+        //is Admin?
+        if(in_array(2, $DIC->rbac()->review()->assignedGlobalRoles($DIC->user()->getId())) === false) {
+            echo "no Permission";
+            exit;
+        };
 
-	/**
-	 * UDFCheckGUI constructor
-	 *
-	 * @param UserSettingsGUI|UDFCheckGUI $parent_gui
-	 */
-	public function __construct($parent_gui) {
-		self::dic()->ctrl()->saveParameter($this, self::IDENTIFIER_CATEGORY);
-		self::dic()->ctrl()->saveParameter($this, self::IDENTIFIER);
-		self::dic()->ctrl()->setParameter($this, UserSettingsGUI::IDENTIFIER, $_GET[UserSettingsGUI::IDENTIFIER]);
-		self::dic()->ctrl()->saveParameter($parent_gui, UserSettingsGUI::IDENTIFIER);
+        $this->ctrl = $DIC->ctrl();
+        $this->ui = $DIC->ui();
+        $this->pl = ilUserDefaultsPlugin::getInstance();
+        $this->ctrl->saveParameter($this, self::IDENTIFIER_CATEGORY);
+        $this->ctrl->saveParameter($this, self::IDENTIFIER);
+        $this->ctrl->setParameter($this, UserSettingsGUI::IDENTIFIER, $_GET[UserSettingsGUI::IDENTIFIER] ?? null);
+        $this->ctrl->saveParameter($parent_gui, UserSettingsGUI::IDENTIFIER);
 	}
 
-
-	/**
-	 *
-	 */
-	public function executeCommand() {
-		$cmd = self::dic()->ctrl()->getCmd(self::CMD_INDEX);
+	public function executeCommand(): bool
+    {
+		$cmd = $this->ctrl->getCmd(self::CMD_INDEX);
 		switch ($cmd) {
 			case self::CMD_INDEX:
 			case self::CMD_CANCEL:
@@ -67,107 +72,97 @@ class UDFCheckGUI {
 				$this->{$cmd}();
 				break;
 		}
-
 		return true;
 	}
 
-
-	/**
-	 *
-	 */
-	protected function index() {
+	protected function index(): void
+    {
 		$ilUDFCheckTabeGUI = new UDFCheckTableGUI($this);
-		self::output()->output($ilUDFCheckTabeGUI);
+        $this->ui->mainTemplate()->setContent($ilUDFCheckTabeGUI->getHTML());
 	}
 
-
-	/**
-	 *
-	 */
-	protected function add() {
+	protected function add(): void
+    {
 		$ilUDFCheckFormGUI = new UDFCheckFormGUI($this);
 		$ilUDFCheckFormGUI->fillForm();
-		self::output()->output($ilUDFCheckFormGUI);
+        $this->ui->mainTemplate()->setContent($ilUDFCheckFormGUI->getHTML());
 	}
 
-
-	/**
-	 *
-	 */
-	protected function create() {
+	protected function create(): void
+    {
 		$ilUDFCheckFormGUI = new UDFCheckFormGUI($this);
 		$ilUDFCheckFormGUI->setValuesByPost();
 		if ($id = $ilUDFCheckFormGUI->saveObject()) {
-			ilUtil::sendSuccess(self::plugin()->translate('msg_entry_added'), true);
-			self::dic()->ctrl()->setParameter($this, self::IDENTIFIER_CATEGORY, $ilUDFCheckFormGUI->getObject()->getFieldCategory());
-			self::dic()->ctrl()->setParameter($this, self::IDENTIFIER, $id);
-			self::dic()->ctrl()->redirect($this, self::CMD_EDIT);
+            global $DIC;
+            $tpl = $DIC["tpl"];
+            $tpl->setOnScreenMessage('success', $this->pl->txt('msg_entry_added'), true);
+			$this->ctrl->setParameter($this, self::IDENTIFIER_CATEGORY, $ilUDFCheckFormGUI->getObject()->getFieldCategory());
+            $this->ctrl->setParameter($this, self::IDENTIFIER, $id);
+            $this->ctrl->redirect($this, self::CMD_EDIT);
 		}
-		self::output()->output($ilUDFCheckFormGUI);
+
+        $this->ui->mainTemplate()->setContent($ilUDFCheckFormGUI->getHTML());
 	}
 
-
-	/**
-	 *
-	 */
-	protected function edit() {
+    protected function edit(): void
+    {
 		$ilUDFCheckFormGUI = new UDFCheckFormGUI($this, $this->getObject());
 		$ilUDFCheckFormGUI->fillForm();
-		self::output()->output($ilUDFCheckFormGUI);
+        $this->ui->mainTemplate()->setContent($ilUDFCheckFormGUI->getHTML());
 	}
 
-
-	/**
-	 *
-	 */
-	protected function update() {
+	protected function update(): void
+    {
 		$ilUDFCheckFormGUI = new UDFCheckFormGUI($this, $this->getObject());
 		$ilUDFCheckFormGUI->setValuesByPost();
 		if ($ilUDFCheckFormGUI->saveObject()) {
-			ilUtil::sendSuccess(self::plugin()->translate('msg_entry_added'), true);
+            global $DIC;
+            $tpl = $DIC["tpl"];
+            $tpl->setOnScreenMessage('success',$this->pl->txt('msg_entry_added'), true);
 			$this->cancel();
 		}
-		self::output()->output($ilUDFCheckFormGUI);
+        $this->ui->mainTemplate()->setContent($ilUDFCheckFormGUI->getHTML());
 	}
 
-
-	/**
-	 *
-	 */
-	public function confirmDelete() {
+    /**
+     * @throws ilCtrlException
+     */
+    public function confirmDelete(): void
+    {
 		$conf = new ilConfirmationGUI();
-		$conf->setFormAction(self::dic()->ctrl()->getFormAction($this));
-		$conf->setHeaderText(self::plugin()->translate('msg_confirm_delete'));
-		$conf->setConfirm(self::plugin()->translate('check_delete'), self::CMD_DELETE);
-		$conf->setCancel(self::plugin()->translate('check_cancel'), self::CMD_INDEX);
-		self::output()->output($conf);
+		$conf->setFormAction($this->ctrl->getFormAction($this));
+
+        $conf->setHeaderText($this->pl->txt('msg_confirm_delete'));
+		$conf->setConfirm($this->pl->txt('check_delete'), self::CMD_DELETE);
+		$conf->setCancel($this->pl->txt('check_cancel'), self::CMD_INDEX);
+
+        $this->ui->mainTemplate()->setContent($conf->getHTML());
 	}
 
 
-	/**
-	 *
-	 */
-	public function delete() {
+    /**
+     * @throws ilCtrlException
+     */
+    public function delete(): void
+    {
 		$ilUDFCheck = $this->getObject();
 		$ilUDFCheck->delete();
 		$this->cancel();
 	}
 
 
-	/**
-	 *
-	 */
-	public function cancel() {
-		self::dic()->ctrl()->setParameter($this, self::IDENTIFIER_CATEGORY, NULL);
-		self::dic()->ctrl()->setParameter($this, self::IDENTIFIER, NULL);
-		self::dic()->ctrl()->redirect($this, self::CMD_INDEX);
+    /**
+     * @throws ilCtrlException
+     */
+    public function cancel(): void
+    {
+        $this->ctrl->setParameter($this, self::IDENTIFIER_CATEGORY, NULL);
+        $this->ctrl->setParameter($this, self::IDENTIFIER, NULL);
+        $this->ctrl->redirect($this, self::CMD_INDEX);
 	}
 
-
-	/**
-	 * @return UDFCheck|null
-	 */
-	protected function getObject() {
-		return UDFCheck::getCheckById(filter_input(INPUT_GET, UDFCheckGUI::IDENTIFIER_CATEGORY), filter_input(INPUT_GET, UDFCheckGUI::IDENTIFIER));
+	protected function getObject(): ?UDFCheck
+    {
+		return UDFCheck::getCheckById((int) filter_input(INPUT_GET, UDFCheckGUI::IDENTIFIER_CATEGORY), (int) filter_input(INPUT_GET, UDFCheckGUI::IDENTIFIER));
 	}
 }

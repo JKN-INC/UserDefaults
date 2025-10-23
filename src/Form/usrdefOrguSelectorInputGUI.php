@@ -1,9 +1,8 @@
 <?php
 
-/* Copyright (c) 1998-2013 ILIAS open source, Extended GPL, see docs/LICENSE */
-
 namespace srag\Plugins\UserDefaults\Form;
 
+use ilCtrlException;
 use ilExplorerSelectInputGUI;
 use ilFormPropertyDispatchGUI;
 use ilObject;
@@ -15,14 +14,7 @@ use srag\DIC\UserDefaults\DICTrait;
 use srag\Plugins\UserDefaults\Utils\UserDefaultsTrait;
 
 /**
- * Class usrdefOrguSelectorInputGUI
- *
- * @package           srag\Plugins\UserDefaults\Form
- *
- * Select repository nodes
- *
  * @ilCtrl_IsCalledBy usrdefOrguSelectorInputGUI: ilFormPropertyDispatchGUI
- *
  */
 class usrdefOrguSelectorInputGUI extends ilExplorerSelectInputGUI {
 
@@ -36,22 +28,19 @@ class usrdefOrguSelectorInputGUI extends ilExplorerSelectInputGUI {
 	/**
 	 * @var bool
 	 */
-	protected $multi_nodes = false;
+	protected bool $multi_nodes = false;
 	/**
 	 * @var ilRepositorySelectorExplorerGUI
 	 */
-	protected $explorer_gui;
+	protected \ilExplorerBaseGUI $explorer_gui;
 
 
-	/**
-	 * Constructor
-	 *
-	 * @param    string $a_title   Title
-	 * @param    string $a_postvar Post Variable
-	 */
-	function __construct($a_title, $a_postvar, $a_multi = false) {
+	function __construct(string $a_title, string $a_postvar, bool $a_multi = false) {
+        global $DIC;
 		$this->multi_nodes = $a_multi;
 		$this->postvar = $a_postvar;
+
+        $this->ctrl = $DIC->ctrl();
 
 		$this->explorer_gui = new udfOrguSelectorExplorerGUI(array(
 			ilPropertyFormGUI::class,
@@ -66,12 +55,8 @@ class usrdefOrguSelectorInputGUI extends ilExplorerSelectInputGUI {
 	}
 
 
-	/**
-	 * Set title modifier
-	 *
-	 * @param callable $a_val
-	 */
-	function setTitleModifier(callable $a_val) {
+	function setTitleModifier(callable $a_val): void
+    {
 		$this->title_modifier = $a_val;
 		if ($a_val != NULL) {
 			$this->explorer_gui->setNodeContentModifier(function ($a_node) use ($a_val) {
@@ -82,25 +67,13 @@ class usrdefOrguSelectorInputGUI extends ilExplorerSelectInputGUI {
 		}
 	}
 
-
-	/**
-	 * Get title modifier
-	 *
-	 * @return callable
-	 */
-	function getTitleModifier() {
+	function getTitleModifier(): ?callable
+    {
 		return $this->title_modifier;
 	}
 
-
-	/**
-	 * Get title for node id (needs to be overwritten, if explorer is not a tree eplorer
-	 *
-	 * @param
-	 *
-	 * @return
-	 */
-	function getTitleForNodeId($a_id) {
+	function getTitleForNodeId($a_id): string
+    {
 		$c = $this->getTitleModifier();
 		if (is_callable($c)) {
 			return $c($a_id);
@@ -110,47 +83,37 @@ class usrdefOrguSelectorInputGUI extends ilExplorerSelectInputGUI {
 	}
 
 
-	/**
-	 * Handle explorer command
-	 */
-	function handleExplorerCommand() {
+	function handleExplorerCommand(): void
+    {
 		if ($this->explorer_gui->handleCommand()) {
 			//			exit;
 		}
 	}
 
-
-	/**
-	 * @return ilRepositorySelectorExplorerGUI
-	 */
-	function getExplorerGUI() {
+	function getExplorerGUI(): \ilExplorerBaseGUI|udfOrguSelectorExplorerGUI|ilRepositorySelectorExplorerGUI
+    {
 		return $this->explorer_gui;
 	}
 
-
-	/**
-	 * Get HTML
-	 *
-	 * @param
-	 *
-	 * @return
-	 */
-	function getHTML() {
-		self::dic()->ctrl()->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $this->postvar);
-		$html = parent::getHTML();
-		self::dic()->ctrl()->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $_REQUEST["postvar"]);
+    /**
+     * @throws ilCtrlException
+     */
+    function getHTML(): string
+    {
+        $this->ctrl->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $this->postvar);
+		$html = parent::getTableFilterHTML();
+        $this->ctrl->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $_REQUEST["postvar"]);
 
 		return $html;
 	}
 
-
-	/**
-	 * Render item
-	 */
-	function render($a_mode = "property_form") {
-		self::dic()->ctrl()->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $this->postvar);
+    /**
+     * @throws ilCtrlException
+     */
+    function render($a_mode = "property_form"): string
+    {
+        $this->ctrl->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $this->postvar);
 
 		return parent::render($a_mode);
-		self::dic()->ctrl()->setParameterByClass(ilFormPropertyDispatchGUI::class, "postvar", $_REQUEST["postvar"]);
 	}
 }

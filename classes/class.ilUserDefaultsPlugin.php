@@ -2,14 +2,11 @@
 
 require_once __DIR__ . "/../vendor/autoload.php";
 
-use ILIAS\GlobalScreen\Scope\MainMenu\Provider\AbstractStaticPluginMainMenuProvider;
 use srag\Plugins\UserDefaults\Config\UserDefaultsConfig;
-use srag\Plugins\UserDefaults\Menu\Menu;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheck;
 use srag\Plugins\UserDefaults\UDFCheck\UDFCheckOld;
 use srag\Plugins\UserDefaults\UserSetting\UserSetting;
 use srag\Plugins\UserDefaults\Utils\UserDefaultsTrait;
-use srag\RemovePluginDataConfirm\UserDefaults\PluginUninstallTrait;
 
 /**
  * Class ilUserDefaultsPlugin
@@ -19,12 +16,10 @@ use srag\RemovePluginDataConfirm\UserDefaults\PluginUninstallTrait;
  */
 class ilUserDefaultsPlugin extends ilEventHookPlugin {
 
-    use PluginUninstallTrait;
 	use UserDefaultsTrait;
 	const PLUGIN_ID = 'usrdef';
 	const PLUGIN_NAME = 'UserDefaults';
 	const PLUGIN_CLASS_NAME = self::class;
-	const REMOVE_PLUGIN_DATA_CONFIRM_CLASS_NAME = usrdefRemoveDataConfirm::class;
 	// Known Components
 	const SERVICES_USER = 'Services/User';
 	const SERVICES_OBJECT = 'Services/Object';
@@ -45,7 +40,7 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 	/**
 	 * @var array
 	 */
-	protected static $mapping = array(
+	protected static array $mapping = array(
 		self::CREATED_1 => 'on_create',
 		self::CREATED_2 => 'on_create',
 		self::UPDATED => 'on_update',
@@ -59,31 +54,39 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 	/**
 	 * @return ilUserDefaultsPlugin
 	 */
-	public static function getInstance() {
+	public static function getInstance(): ilUserDefaultsPlugin
+    {
 		if (!isset(self::$instance)) {
-			self::$instance = new self();
+            global $DIC;
+
+            /** @var $component_factory ilComponentFactory */
+            $component_factory = $DIC['component.factory'];
+            /** @var $plugin ilUserDefaultsPlugin */
+            $plugin  = $component_factory->getPlugin(ilUserDefaultsPlugin::PLUGIN_ID);
+
+			self::$instance = $plugin;
 		}
 
 		return self::$instance;
 	}
-
-
-	/**
-	 *
-	 */
-	public function __construct() {
-		parent::__construct();
+    public function __construct(
+        ilDBInterface $db,
+        ilComponentRepositoryWrite $component_repository,
+        string $id
+    ) {
+        parent::__construct($db, $component_repository, $id);
 	}
 
+    public function getPrefix(): string {
+        return "evnt_evhk_usrdef";
+    }
 
-	/**
-	 * Handle the event
-	 *
-	 * @param    string        component, e.g. "Services/User"
-	 * @param    string         event, e.g. "afterUpdate"
-	 * @param    array         array of event specific parameters
-	 */
-	public function handleEvent($a_component, $a_event, $a_parameter) {
+
+	public function handleEvent(string $a_component,
+                                string $a_event,
+                                array $a_parameter): void
+    {
+
 		$run = false;
 		$user = NULL;
 		switch ($a_component) {
@@ -92,7 +95,6 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 					case self::AFTER_LOGIN:
 						$user_id = ilObjUser::getUserIdByLogin($a_parameter['username']);
 						$user = new ilObjUser($user_id);
-
 						$run = true;
 						break;
 				}
@@ -122,7 +124,7 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 				switch ($a_event) {
 					case self::ASSIGN_USER_TO_POSITION:
 					case self::REMOVE_USER_FROM_POSITION:
-						$user = new ilObjUser($a_parameter['user_id']);
+						$user = new ilObjUser($a_parameter['usr_id']);
 						$run = true;
 						break;
 				}
@@ -132,11 +134,14 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 				break;
 		}
 
-		$sets = self::$mapping[$a_event];
+        if(array_key_exists($a_event, self::$mapping)) {
+            $sets = self::$mapping[$a_event];
+        }
+
 
         // adding orgunits emits an event and ends up in a loop
 		if ($run === true && $sets && $user instanceof ilObjUser && !str_contains($a_component, "Modules/OrgUnit")) {
-			/**
+            /**
 			 * @var UserSetting $ilUserSetting
 			 */
 			foreach (UserSetting::where(array(
@@ -148,36 +153,26 @@ class ilUserDefaultsPlugin extends ilEventHookPlugin {
 		}
 	}
 
-
-	/**
-	 * @return string
-	 */
-	public function getPluginName() {
+	public function getPluginName(): string
+    {
 		return self::PLUGIN_NAME;
 	}
 
 
-	/**
-	 * @inheritdoc
-	 */
-	public function promoteGlobalScreenProvider(): AbstractStaticPluginMainMenuProvider {
-		return new Menu(self::dic()->dic(), $this);
-	}
-
-
-	/**
-	 * @inheritdoc
-	 */
-	protected function deleteData()/*: void*/ {
-		self::dic()->databaseCore()->dropTable(UDFCheckOld::TABLE_NAME, false);
+	protected function afterUninstall(): void {
+        $this->db->dropTable(UDFCheckOld::TABLE_NAME, false);
 		foreach (UDFCheck::$class_names as $class) {
-			self::dic()->databaseCore()->dropTable($class::TABLE_NAME, false);
+            $this->db->dropTable($class::TABLE_NAME, false);
 		}
-		self::dic()->databaseCore()->dropTable(UserSetting::TABLE_NAME, false);
-		//self::dic()->databaseCore()->dropTable(usrdefUser::TABLE_NAME, false);
-		//self::dic()->databaseCore()->dropTable(usrdefObj::TABLE_NAME, false);
-		self::dic()->databaseCore()->dropTable(UserDefaultsConfig::TABLE_NAME, false);
+        $this->db->dropTable(UserSetting::TABLE_NAME, false);
+		//self::dic()->database()->dropTable(usrdefUser::TABLE_NAME, false);
+		//self::dic()->database()->dropTable(usrdefObj::TABLE_NAME, false);
+        $this->db->dropTable(UserDefaultsConfig::TABLE_NAME, false);
 	}
+
+    public function getImagePath(string $imageName): string {
+        return $this->getDirectory()."/templates/images/".$imageName;
+    }
 
 
     /**

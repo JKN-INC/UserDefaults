@@ -4,22 +4,14 @@ namespace srag\Plugins\UserDefaults\UserSearch;
 
 use ActiveRecord;
 use ilUserDefaultsPlugin;
-use srag\DIC\UserDefaults\DICTrait;
 use srag\Plugins\UserDefaults\Utils\UserDefaultsTrait;
 
 /**
- * Class usrdefObj
- *
- * @package    srag\Plugins\UserDefaults\UserSearch
- *
- * @author     Fabian Schmid <fs@studer-raimann.ch>
- * @version    2.0.6
  *
  * @deprecated TODO: Remove this class
  */
 class usrdefObj extends ActiveRecord {
 
-	use DICTrait;
 	use UserDefaultsTrait;
 	/**
 	 * @var string
@@ -36,28 +28,24 @@ class usrdefObj extends ActiveRecord {
 
 
 	/**
-	 * @return string
-	 *
 	 * @deprecated
 	 */
-	public function getConnectorContainerName() {
+	public function getConnectorContainerName(): string
+    {
 		return self::TABLE_NAME;
 	}
 
 
 	/**
-	 * @return string
-	 *
 	 * @deprecated
 	 */
-	public static function returnDbTableName() {
+	public static function returnDbTableName(): string
+    {
 		return self::TABLE_NAME;
 	}
 
 
 	/**
-	 * @var
-	 *
 	 * @con_has_field  true
 	 * @con_fieldtype  integer
 	 * @con_length     4
@@ -67,40 +55,32 @@ class usrdefObj extends ActiveRecord {
 	 *
 	 * @deprecated
 	 */
-	protected $obj_id;
+	protected int $obj_id;
 	/**
-	 * @var
-	 *
 	 * @con_has_field true
 	 * @con_fieldtype text
 	 * @con_length    4
 	 *
 	 * @deprecated
 	 */
-	protected $type;
+	protected string $type;
 	/**
-	 * @var
-	 *
 	 * @con_has_field true
 	 * @con_fieldtype text
 	 * @con_length    255
 	 *
 	 * @deprecated
 	 */
-	protected $title;
+	protected string $title;
 	/**
-	 * @var
-	 *
 	 * @con_has_field true
 	 * @con_fieldtype text
 	 * @con_length    128
 	 *
 	 * @deprecated
 	 */
-	protected $description;
+	protected string $description;
 	/**
-	 * @var
-	 *
 	 * @con_has_field  true
 	 * @con_fieldtype  integer
 	 * @con_length     4
@@ -108,7 +88,7 @@ class usrdefObj extends ActiveRecord {
 	 *
 	 * @deprecated
 	 */
-	protected $owner;
+	protected int $owner;
 	/**
 	 * @var
 	 *
@@ -142,21 +122,18 @@ class usrdefObj extends ActiveRecord {
 
 
 	/**
-	 * @return mixed
-	 *
 	 * @deprecated
 	 */
-	public function getObjId() {
+	public function getObjId(): int {
 		return $this->obj_id;
 	}
 
 
 	/**
-	 * @param mixed $obj_id
-	 *
 	 * @deprecated
 	 */
-	public function setObjId($obj_id) {
+	public function setObjId(int $obj_id): void
+    {
 		$this->obj_id = $obj_id;
 	}
 
