@@ -431,7 +431,7 @@ class UserSetting extends ActiveRecord {
 
 	protected function isValid(): bool
     {
-		$do_assignements = true;
+		$do_assignements = false;
 		foreach ($this->getUdfCheckObjects() as $udf) {
 			if (!$udf->isValid($this->getUsrObject())) {
 				$do_assignements = true;
