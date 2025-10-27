@@ -55,12 +55,26 @@ class UserSettingsGUI
     public function __construct()
     {
         global $DIC;
-        //is Admin?
-        if(in_array(2, $DIC->rbac()->review()->assignedGlobalRoles($DIC->user()->getId())) === false) {
+      
+        // Get all assigned global roles of the current user
+        $assigned_roles = $DIC->rbac()->review()->assignedGlobalRoles($DIC->user()->getId());
+
+        // Get titles for the assigned roles
+        $allowed_roles = ["Administrator", "Portal Administrator"];
+        $has_permission = false;
+
+        foreach ($assigned_roles as $role_id) {
+            $role_title = ilObjRole::_lookupTitle($role_id);
+            if (in_array($role_title, $allowed_roles)) {
+                $has_permission = true;
+                break;
+            }
+        }
+        
+        if (!$has_permission) {
             echo "no Permission";
             exit;
-        };
-
+        }
 
         $this->ctrl = $DIC->ctrl();
         $this->ui = $DIC->ui();
