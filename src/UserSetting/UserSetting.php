@@ -433,9 +433,9 @@ class UserSetting extends ActiveRecord {
     {
 		$do_assignements = false;
 		foreach ($this->getUdfCheckObjects() as $udf) {
-			if (!$udf->isValid($this->getUsrObject())) {
+			if ($udf->isValid($this->getUsrObject())) {
 				$do_assignements = true;
-			}
+			} 
 		}
 
 		return $do_assignements;
